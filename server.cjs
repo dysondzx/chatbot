@@ -1,7 +1,8 @@
-const http = require('http');
+const express = require('express');
 const mysql = require('mysql2/promise');
-const url = require('url');
-const querystring = require('querystring');
+
+// 创建Express应用实例
+const app = express();
 
 // 数据库连接配置
 const dbConfig = {
@@ -33,90 +34,92 @@ async function initDatabase() {
 }
 
 /**
- * 处理API请求
+ * 获取聊天记录
+ * @param {Object} req - Express请求对象
+ * @param {Object} res - Express响应对象
  */
-async function handleApiRequest(req, res) {
-  const parsedUrl = url.parse(req.url);
-  const pathname = parsedUrl.pathname;
-  
-  // 设置CORS头
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-  
-  // 处理预检请求
-  if (req.method === 'OPTIONS') {
-    res.writeHead(200);
-    res.end();
-    return;
+async function getMessages(req, res) {
+  try {
+    const [rows] = await pool.query(
+      'SELECT message_id as id, content, type FROM chat_messages ORDER BY created_at ASC'
+    );
+    res.json(rows);
+  } catch (error) {
+    console.error('获取聊天记录失败:', error.message);
+    res.status(500).json({ error: '获取聊天记录失败' });
   }
-  
-  // 获取聊天记录
-  if (pathname === '/api/messages' && req.method === 'GET') {
-    try {
-      const [rows] = await pool.query(
-        'SELECT message_id as id, content, type FROM chat_messages ORDER BY created_at ASC'
-      );
-      res.writeHead(200, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify(rows));
-    } catch (error) {
-      console.error('获取聊天记录失败:', error.message);
-      res.writeHead(500, { 'Content-Type': 'application/json' });
-      res.end(JSON.stringify({ error: '获取聊天记录失败' }));
-    }
-    return;
-  }
-  
-  // 保存聊天记录
-  if (pathname === '/api/messages' && req.method === 'POST') {
-    let body = '';
-    req.on('data', chunk => {
-      body += chunk.toString();
-    });
-    req.on('end', async () => {
-      try {
-        const data = JSON.parse(body);
-        const { id, content, type } = data;
-        
-        if (!id || !content || !type) {
-          throw new Error('缺少必要参数');
-        }
-        
-        await pool.query(
-          'INSERT INTO chat_messages (message_id, content, type) VALUES (?, ?, ?)',
-          [id, content, type]
-        );
-        
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ success: true }));
-      } catch (error) {
-        console.error('保存聊天记录失败:', error.message);
-        res.writeHead(500, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify({ error: '保存聊天记录失败' }));
-      }
-    });
-    return;
-  }
-  
-  // 未找到路由
-  res.writeHead(404, { 'Content-Type': 'application/json' });
-  res.end(JSON.stringify({ error: '路由不存在' }));
 }
 
 /**
- * 创建并启动HTTP服务器
+ * 保存聊天记录
+ * @param {Object} req - Express请求对象
+ * @param {Object} res - Express响应对象
+ */
+async function saveMessage(req, res) {
+  try {
+    const { id, content, type } = req.body;
+    
+    if (!id || !content || !type) {
+      return res.status(400).json({ error: '缺少必要参数' });
+    }
+    
+    await pool.query(
+      'INSERT INTO chat_messages (message_id, content, type) VALUES (?, ?, ?)',
+      [id, content, type]
+    );
+    
+    res.json({ success: true });
+  } catch (error) {
+    console.error('保存聊天记录失败:', error.message);
+    res.status(500).json({ error: '保存聊天记录失败' });
+  }
+}
+
+/**
+ * 初始化Express应用
+ */
+function setupExpress() {
+  // 解析JSON请求体
+  app.use(express.json());
+  
+  // 设置CORS中间件
+  app.use((req, res, next) => {
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+    res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+    
+    // 处理预检请求
+    if (req.method === 'OPTIONS') {
+      return res.status(200).end();
+    }
+    
+    next();
+  });
+  
+  // 定义API路由
+  app.get('/api/messages', getMessages);
+  app.post('/api/messages', saveMessage);
+  
+  // 404处理
+  app.use((req, res) => {
+    res.status(404).json({ error: '路由不存在' });
+  });
+}
+
+/**
+ * 启动Express服务器
  */
 async function startServer() {
   // 初始化数据库连接
   await initDatabase();
   
-  // 创建HTTP服务器
-  const server = http.createServer(handleApiRequest);
+  // 设置Express应用
+  setupExpress();
   
   // 监听端口
   const PORT = process.env.PORT || 3000;
-  server.listen(PORT, () => {
-    console.log(`Node.js服务运行在 http://localhost:${PORT}`);
+  const server = app.listen(PORT, () => {
+    console.log(`Express服务运行在 http://localhost:${PORT}`);
   });
   
   // 处理服务器关闭
