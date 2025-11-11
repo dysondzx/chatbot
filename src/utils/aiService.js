@@ -1,49 +1,30 @@
 /**
  * AI服务工具模块
- * 提供与Kimi API交互的能力，包括流式响应处理
+ * 提供与后端API交互的能力，获取AI生成的响应，包括流式响应处理
  */
 
 /**
  * 创建 AI 聊天服务实例
- * 使用原生fetch API直接调用Kimi API，避免LangChain封装的问题
+ * 调用后端API路由，由后端处理与Kimi API的交互
  * @returns {Object} AI 服务实例
  */
 export function createAIService() {
-  // 从环境变量获取配置
-  const apiKey = import.meta.env.VITE_API_KEY;
-  const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
-  const model = import.meta.env.VITE_MODEL || "moonshot-v1-8k";
-
   /**
    * 发送消息并获取流式响应
-   * 使用原生fetch API直接调用Kimi API的chat/completions接口
+   * 调用后端API路由，由后端处理与Kimi API的交互
    * @param {string} message - 用户消息
    * @param {Function} onChunk - 接收流式响应块的回调函数
    * @returns {Promise<string>} 完整的 AI 响应
    */
   async function sendMessageStream(message, onChunk) {
     try {
-      // 构建请求体
-      const requestBody = {
-        model: model,
-        messages: [
-          { role: "user", content: message }
-        ],
-        stream: true, // 启用流式响应
-        temperature: 0.7
-      };
-      
-      // 构建完整的API URL
-      const apiUrl = `${apiBaseUrl}/chat/completions`;
-      
-      // 使用fetch发送POST请求
-      const response = await fetch(apiUrl, {
+      // 调用后端API路由 - 使用相对路径，通过Vite代理转发到后端服务器
+      const response = await fetch('/api/chat', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
+          'Content-Type': 'application/json'
         },
-        body: JSON.stringify(requestBody),
+        body: JSON.stringify({ message }),
         signal: AbortSignal.timeout(30000) // 30秒超时
       });
       
@@ -83,13 +64,15 @@ export function createAIService() {
               // 解析JSON数据
               const parsedData = JSON.parse(data);
               
+              // 检查是否包含错误信息
+              if (parsedData.error) {
+                throw new Error(parsedData.error);
+              }
+              
               // 提取内容并发送给回调函数
-              if (parsedData.choices && parsedData.choices[0] && parsedData.choices[0].delta) {
-                const content = parsedData.choices[0].delta.content || '';
-                if (content) {
-                  fullResponse += content;
-                  onChunk(content);
-                }
+              if (parsedData.content) {
+                fullResponse += parsedData.content;
+                onChunk(parsedData.content);
               }
             } catch (jsonError) {
               console.error('解析JSON失败:', jsonError, '原始数据:', data);
