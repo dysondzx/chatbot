@@ -33,6 +33,7 @@ main {
   width: 100%;
   max-width: 780px; /* 屏幕 >780px 时宽度为 780px */
   padding: 0 20px; /* 20px 的横向内边距 */
+  padding-bottom: 94px;
   height: 100vh;
   display: flex;
   flex-direction: column;

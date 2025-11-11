@@ -13,9 +13,6 @@ export function createAIService() {
   const apiKey = import.meta.env.VITE_API_KEY;
   const apiBaseUrl = import.meta.env.VITE_API_BASE_URL;
   const model = import.meta.env.VITE_MODEL || "moonshot-v1-8k";
-  
-  console.log('使用的模型:', model);
-  console.log('API基础URL:', apiBaseUrl);
 
   /**
    * 发送消息并获取流式响应
@@ -38,7 +35,6 @@ export function createAIService() {
       
       // 构建完整的API URL
       const apiUrl = `${apiBaseUrl}/chat/completions`;
-      console.log('请求API URL:', apiUrl);
       
       // 使用fetch发送POST请求
       const response = await fetch(apiUrl, {
