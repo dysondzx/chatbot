@@ -3,13 +3,7 @@ import { ref, onMounted, nextTick } from 'vue';
 import { createAIService, formatErrorMessage } from './utils/aiService.js';
 
 // 消息列表数据
-const messages = ref([
-  {
-    id: 1,
-    content: '你好！我是AI助手，请问有什么可以帮助你的吗？',
-    type: 'ai'
-  }
-]);
+const messages = ref([]);
 
 // 输入框内容
 const inputMessage = ref('');
@@ -40,12 +34,18 @@ const scrollToBottom = () => {
 const sendMessage = async () => {
   const message = inputMessage.value.trim();
   if (message && !isLoading.value) {
-    // 添加用户消息
-    messages.value.push({
-      id: Date.now(),
+    // 创建用户消息对象
+    const userMessage = {
+      id: Date.now().toString(),
       content: message,
       type: 'user'
-    });
+    };
+    
+    // 添加用户消息
+    messages.value.push(userMessage);
+    
+    // 保存用户消息到数据库
+    saveMessageToDatabase(userMessage);
     
     // 清空输入框
     inputMessage.value = '';
@@ -57,12 +57,13 @@ const sendMessage = async () => {
     isLoading.value = true;
     
     // 创建 AI 消息占位符
-    const aiMessageId = Date.now() + 1;
-    messages.value.push({
+    const aiMessageId = (Date.now() + 1).toString();
+    const aiMessage = {
       id: aiMessageId,
       content: '',
       type: 'ai'
-    });
+    };
+    messages.value.push(aiMessage);
     
     try {
       // 发送消息并处理流式响应
@@ -74,6 +75,12 @@ const sendMessage = async () => {
           scrollToBottom(); // 每次接收到新内容都滚动到底部
         }
       });
+      
+      // AI回复完成后，保存AI消息到数据库
+      const savedAiMessage = messages.value.find(msg => msg.id === aiMessageId);
+      if (savedAiMessage) {
+        saveMessageToDatabase(savedAiMessage);
+      }
     } catch (error) {
       // 处理错误
       const aiMessage = messages.value.find(msg => msg.id === aiMessageId);
@@ -100,10 +107,68 @@ const handleKeyPress = (event) => {
 };
 
 /**
- * 组件挂载后滚动到底部
+ * 从数据库获取聊天记录
+ */
+async function fetchMessages() {
+  try {
+    const response = await fetch('http://localhost:3000/api/messages');
+    if (response.ok) {
+      const data = await response.json();
+      messages.value = data.length > 0 ? data : [
+        {
+          id: 1,
+          content: '你好！我是AI助手，请问有什么可以帮助你的吗？',
+          type: 'ai'
+        }
+      ];
+    } else {
+      // 如果获取失败，使用默认消息
+      messages.value = [
+        {
+          id: 1,
+          content: '你好！我是AI助手，请问有什么可以帮助你的吗？',
+          type: 'ai'
+        }
+      ];
+    }
+  } catch (error) {
+    console.error('获取聊天记录失败:', error);
+    // 出错时使用默认消息
+    messages.value = [
+      {
+        id: 1,
+        content: '你好！我是AI助手，请问有什么可以帮助你的吗？',
+        type: 'ai'
+      }
+    ];
+  } finally {
+    scrollToBottom();
+  }
+}
+
+/**
+ * 保存消息到数据库
+ */
+async function saveMessageToDatabase(message) {
+  try {
+    await fetch('http://localhost:3000/api/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(message)
+    });
+  } catch (error) {
+    console.error('保存消息失败:', error);
+    // 保存失败不影响用户体验，仅记录错误
+  }
+}
+
+/**
+ * 组件挂载后获取聊天记录
  */
 onMounted(() => {
-  scrollToBottom();
+  fetchMessages();
 });
 </script>
 
